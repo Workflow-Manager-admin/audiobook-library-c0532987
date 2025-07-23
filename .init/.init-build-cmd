@@ -1,0 +1,4 @@
+{
+    "command": "chmod +x startup.sh && sudo ./startup.sh &",
+    "working_directory": "/home/kavia/workspace/code-generation/audiobook-library-c0532987/audiobook_local_database"
+}
