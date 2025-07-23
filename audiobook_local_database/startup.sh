@@ -49,27 +49,40 @@ fi
 
 # Initialize PostgreSQL data directory if it doesn't exist
 if [ ! -f "/var/lib/postgresql/data/PG_VERSION" ]; then
-    echo "Initializing PostgreSQL..."
-    sudo -u postgres ${PG_BIN}/initdb -D /var/lib/postgresql/data
+    echo "Initializing PostgreSQL data directory..."
+    if ! sudo -u postgres ${PG_BIN}/initdb -D /var/lib/postgresql/data; then
+        echo "ERROR: Failed to initialize PostgreSQL data directory. Check directory permissions or user privileges."
+        exit 1
+    fi
+else
+    echo "Data directory already initialized."
+fi
+
+if [ "$CI" = "true" ] || [ "$NO_SERVER" = "1" ]; then
+    echo "Detected CI/NO_SERVER mode. Only initializing database and user, not starting PostgreSQL server."
+    echo "If you wish to start the server manually, run this script without NO_SERVER or CI environment variables."
+    exit 0
 fi
 
 # Start PostgreSQL server in background
 echo "Starting PostgreSQL server..."
 sudo -u postgres ${PG_BIN}/postgres -D /var/lib/postgresql/data -p ${DB_PORT} &
 
-# Wait for PostgreSQL to start
-echo "Waiting for PostgreSQL to start..."
-sleep 5
-
-# Check if PostgreSQL is running
-for i in {1..15}; do
-    if sudo -u postgres ${PG_BIN}/pg_isready -p ${DB_PORT} > /dev/null 2>&1; then
-        echo "PostgreSQL is ready!"
-        break
+# Wait for PostgreSQL to start, with timeout to prevent infinite wait during CI/builds
+echo "Waiting for PostgreSQL to start (max 40 seconds)..."
+MAX_WAIT=40
+WAITED=0
+until sudo -u postgres ${PG_BIN}/pg_isready -p ${DB_PORT} > /dev/null 2>&1; do
+    if [ $WAITED -ge $MAX_WAIT ]; then
+        echo "ERROR: PostgreSQL did not become available after $MAX_WAIT seconds."
+        echo "Check for port conflicts or permissions issues."
+        exit 1
     fi
-    echo "Waiting... ($i/15)"
+    echo "Waiting... ($WAITED/$MAX_WAIT seconds)"
     sleep 2
+    WAITED=$((WAITED+2))
 done
+echo "PostgreSQL is ready!"
 
 # Create database and user
 echo "Setting up database and user..."
